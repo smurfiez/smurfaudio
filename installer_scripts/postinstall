@@ -1,0 +1,20 @@
+#!/bin/bash
+set -e
+
+# Ensure permissions on BlackHole HAL audio driver
+if [ -d "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" ]; then
+    chown -R root:wheel "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver"
+    find "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" -type d -exec chmod 755 {} \;
+    find "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" -type f -exec chmod 644 {} \;
+    find "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver/Contents/MacOS" -type f -exec chmod 755 {} \;
+fi
+
+# Ensure permissions on SmurfAudio.app
+if [ -d "/Applications/SmurfAudio.app" ]; then
+    chmod -R 755 "/Applications/SmurfAudio.app"
+fi
+
+# Reload macOS CoreAudio daemon so BlackHole virtual device is registered immediately
+launchctl kickstart -kp system/com.apple.audio.coreaudiod 2>/dev/null || killall -9 coreaudiod 2>/dev/null || true
+
+exit 0

@@ -39,23 +39,27 @@ SmurfAudio is a native macOS menu bar application built with Swift and SwiftUI. 
    cd smurfaudio
    ```
 
-2. **Build and package the application bundle:**
+2. **One-Click Automated Install (App + BlackHole Driver):**
    ```bash
-   ./build_app.sh
+   ./install.sh
    ```
-   This script:
-   - Compiles the Swift code with SwiftPM in debug configuration.
-   - Assembles the `SmurfAudio.app` bundle structure with `Info.plist`.
-   - Ad-hoc signs the application with ScreenCaptureKit and audio recording entitlements (`SmurfAudio.entitlements`).
+   This script builds `SmurfAudio.app`, verifies and installs the BlackHole 2ch audio loopback driver into `/Library/Audio/Plug-Ins/HAL/`, reloads `coreaudiod`, and installs the application to `/Applications`.
 
-3. **(Optional) Package into a distributable DMG:**
+3. **Build Installer Package (.pkg) with Prerequisites:**
+   ```bash
+   ./create_installer.sh
+   ```
+   This produces `SmurfAudioInstaller.pkg`, a standalone macOS installer that installs both `SmurfAudio.app` and `BlackHole2ch.driver` in one step via standard macOS GUI installation.
+
+4. **Package into Distributable DMG:**
    ```bash
    ./create_dmg.sh
    ```
-   This generates `SmurfAudio.dmg` containing the signed application and a shortcut to `/Applications` for standard macOS drag-and-drop installation.
+   This generates `SmurfAudio.dmg` containing the 1-click installer package (`Install SmurfAudio.pkg`), the standalone app bundle (`SmurfAudio.app`), and an `/Applications` drag-and-drop link.
 
-4. **(Optional) Install to Applications:**
+5. **Manual Build Only:**
    ```bash
+   ./build_app.sh
    cp -R SmurfAudio.app /Applications/
    ```
 
