@@ -48,7 +48,13 @@ SmurfAudio is a native macOS menu bar application built with Swift and SwiftUI. 
    - Assembles the `SmurfAudio.app` bundle structure with `Info.plist`.
    - Ad-hoc signs the application with ScreenCaptureKit and audio recording entitlements (`SmurfAudio.entitlements`).
 
-3. **(Optional) Install to Applications:**
+3. **(Optional) Package into a distributable DMG:**
+   ```bash
+   ./create_dmg.sh
+   ```
+   This generates `SmurfAudio.dmg` containing the signed application and a shortcut to `/Applications` for standard macOS drag-and-drop installation.
+
+4. **(Optional) Install to Applications:**
    ```bash
    cp -R SmurfAudio.app /Applications/
    ```
