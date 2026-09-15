@@ -14,7 +14,7 @@ struct SmurfAudioApp: App {
                 }
         }
         .windowResizability(.contentSize)
-        .defaultSize(width: 360, height: 520)
+        .defaultSize(width: 580, height: 580)
 
         // Menu bar extra
         MenuBarExtra("SmurfAudio", systemImage: "waveform.circle.fill") {

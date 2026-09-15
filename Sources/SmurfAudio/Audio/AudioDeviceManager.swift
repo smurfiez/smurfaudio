@@ -23,6 +23,9 @@ final class AudioDeviceManager: ObservableObject {
     /// The current macOS system default input device.
     @Published private(set) var defaultInputDevice: AudioDevice?
 
+    /// The current macOS system default sound effects / alerts output device.
+    @Published private(set) var defaultSystemOutputDevice: AudioDevice?
+
     // MARK: - Private
 
     /// Dispatch queue for CoreAudio property listener callbacks.
@@ -71,6 +74,15 @@ final class AudioDeviceManager: ObservableObject {
         try setAudioProperty(
             objectID: AudioObjectID(kAudioObjectSystemObject),
             selector: kAudioHardwarePropertyDefaultInputDevice,
+            value: device.audioDeviceID
+        )
+    }
+
+    /// Sets the macOS system default sound effects / alerts output device.
+    func setDefaultSystemOutputDevice(_ device: AudioDevice) throws {
+        try setAudioProperty(
+            objectID: AudioObjectID(kAudioObjectSystemObject),
+            selector: kAudioHardwarePropertyDefaultSystemOutputDevice,
             value: device.audioDeviceID
         )
     }
@@ -166,6 +178,16 @@ final class AudioDeviceManager: ObservableObject {
                 $0.audioDeviceID == inputID
             } ?? (try? AudioDevice(deviceID: inputID))
         }
+
+        // Default system output (Sound Effects / alerts)
+        if let sfxID: AudioDeviceID = try? getAudioProperty(
+            objectID: AudioObjectID(kAudioObjectSystemObject),
+            selector: kAudioHardwarePropertyDefaultSystemOutputDevice
+        ) {
+            defaultSystemOutputDevice = outputDevices.first {
+                $0.audioDeviceID == sfxID
+            } ?? (try? AudioDevice(deviceID: sfxID))
+        }
     }
 
     // MARK: - Property Listeners
@@ -190,6 +212,14 @@ final class AudioDeviceManager: ObservableObject {
         // 3. Default input device changed
         addListener(
             selector: kAudioHardwarePropertyDefaultInputDevice,
+            objectID: AudioObjectID(kAudioObjectSystemObject)
+        ) { [weak self] in
+            DispatchQueue.main.async { self?.refreshDefaultDevices() }
+        }
+
+        // 4. Default system output device changed (Sound Effects / alerts)
+        addListener(
+            selector: kAudioHardwarePropertyDefaultSystemOutputDevice,
             objectID: AudioObjectID(kAudioObjectSystemObject)
         ) { [weak self] in
             DispatchQueue.main.async { self?.refreshDefaultDevices() }

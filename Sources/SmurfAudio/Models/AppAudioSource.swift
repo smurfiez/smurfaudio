@@ -33,6 +33,12 @@ final class AppAudioSource: ObservableObject, Identifiable {
     /// Specific output destination device. If nil, uses default output.
     @Published var selectedOutputDeviceID: AudioDeviceID?
 
+    /// Whether overdrive boost is engaged (+6 dB gain boost)
+    @Published var isBoostActive: Bool = false
+
+    /// Whether this application is pinned to the user's favorites
+    @Published var isFavorite: Bool = false
+
     // MARK: - Audio & Capture Internals
 
     /// Dedicated AVAudioPlayerNode routed into the audio engine mixer.

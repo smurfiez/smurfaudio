@@ -316,29 +316,31 @@ struct AudioEngineControllerTests {
 
     @Test("AudioEngineController switch device while secondary engine is attached")
     func switchDeviceWithSecondaryEngine() throws {
-        let controller = AudioEngineController()
-        let dev126 = AudioDevice(audioDeviceID: 126, uid: "BuiltInSpeakerDevice", name: "Speakers", manufacturer: "Apple", transportType: 0, hasInput: false, hasOutput: true)
-        let dev133 = AudioDevice(audioDeviceID: 133, uid: "ZQS-L17", name: "ZQS-L17", manufacturer: "Apple", transportType: 0, hasInput: false, hasOutput: true)
+        let deviceManager = AudioDeviceManager()
+        deviceManager.refreshAllDevices()
+        let available = deviceManager.outputDevices
+        guard available.count >= 2 else { return }
+        let dev1 = available[0]
+        let dev2 = available[1]
 
-        try controller.start(outputDevice: dev126)
+        let controller = AudioEngineController()
+        try controller.start(outputDevice: dev1)
         let primaryNode = controller.enablePrimaryCaptureStream()
         #expect(primaryNode.isPlaying == true)
 
         let app = AppAudioSource(processID: 1000, bundleIdentifier: "com.test", name: "TestApp")
-        controller.attachAppPlayerNode(app.playerNode, eq: app.eq, targetDeviceID: dev133.audioDeviceID, format: nil)
+        controller.attachAppPlayerNode(app.playerNode, eq: app.eq, targetDeviceID: dev2.audioDeviceID, format: nil)
         app.playerNode.play()
         #expect(app.playerNode.isPlaying == true)
 
-        // Switch to dev133
-        try controller.switchOutputDevice(dev133)
+        // Switch to dev2
+        try controller.switchOutputDevice(dev2)
         #expect(controller.isRunning == true)
-        print("primaryNode isPlaying after switch to dev133: \(primaryNode.isPlaying)")
         #expect(primaryNode.isPlaying == true)
 
-        // Switch back to dev126
-        try controller.switchOutputDevice(dev126)
+        // Switch back to dev1
+        try controller.switchOutputDevice(dev1)
         #expect(controller.isRunning == true)
-        print("primaryNode isPlaying after switch to dev126: \(primaryNode.isPlaying)")
         #expect(primaryNode.isPlaying == true)
 
         controller.detachAppPlayerNode(app.playerNode, eq: app.eq)

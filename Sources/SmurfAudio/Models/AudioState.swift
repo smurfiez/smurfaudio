@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import CoreAudio
 import Combine
+import SwiftUI
 
 /// Central observable state for the entire audio system.
 ///
@@ -31,6 +32,7 @@ final class AudioState: ObservableObject {
     @Published var inputDevices: [AudioDevice] = []
     @Published var defaultOutputDevice: AudioDevice?
     @Published var defaultInputDevice: AudioDevice?
+    @Published var defaultSystemOutputDevice: AudioDevice?
 
     // MARK: BlackHole & Global Routing
 
@@ -41,7 +43,7 @@ final class AudioState: ObservableObject {
     /// The physical destination device when routing through BlackHole.
     @Published var targetOutputDevice: AudioDevice?
 
-    // MARK: Volume State
+    // MARK: Volume & Boost State
 
     @Published var systemOutputVolume: Float = 0.75 {
         didSet {
@@ -64,13 +66,59 @@ final class AudioState: ObservableObject {
             }
         }
     }
-    @Published var systemInputVolume: Float = 0.50 {
+    @Published var isMasterBoostActive: Bool = false {
         didSet {
-            if let input = defaultInputDevice {
-                deviceManager.setVolume(for: input.audioDeviceID, volume: systemInputVolume, isInput: true)
+            // Overdrive boost: +6 dB boost on master EQ preamp when active
+            if isMasterBoostActive {
+                eq.setGain(forBand: 0, gain: min(12.0, eq.bands[0].gain + 3.0))
             }
         }
     }
+
+    @Published var systemInputVolume: Float = 0.50 {
+        didSet {
+            let effective = isInputMuted ? 0.0 : systemInputVolume
+            if let input = defaultInputDevice {
+                deviceManager.setVolume(for: input.audioDeviceID, volume: effective, isInput: true)
+            }
+        }
+    }
+    @Published var isInputMuted: Bool = false {
+        didSet {
+            let effective = isInputMuted ? 0.0 : systemInputVolume
+            if let input = defaultInputDevice {
+                deviceManager.setVolume(for: input.audioDeviceID, volume: effective, isInput: true)
+            }
+        }
+    }
+    @Published var isInputBoostActive: Bool = false
+
+    @Published var soundEffectsVolume: Float = 0.25 {
+        didSet {
+            if let sfx = defaultSystemOutputDevice ?? defaultOutputDevice {
+                deviceManager.setVolume(for: sfx.audioDeviceID, volume: isSoundEffectsMuted ? 0.0 : soundEffectsVolume)
+            }
+        }
+    }
+    @Published var isSoundEffectsMuted: Bool = false {
+        didSet {
+            if let sfx = defaultSystemOutputDevice ?? defaultOutputDevice {
+                deviceManager.setVolume(for: sfx.audioDeviceID, volume: isSoundEffectsMuted ? 0.0 : soundEffectsVolume)
+            }
+        }
+    }
+    @Published var isSoundEffectsBoostActive: Bool = false
+
+    // MARK: UI Layout State
+
+    /// Which row has its inline FX drawer expanded (e.g., "output", "input", "sfx", or an app's UUID string)
+    @Published var expandedFXID: String? = nil
+
+    /// Whether the window is pinned to stay floating on screen
+    @Published var isWindowPinned: Bool = false
+
+    /// Bundle IDs of apps pinned to favorites
+    @Published var favoriteBundleIDs: Set<String> = []
 
     // MARK: Running Applications (Live ScreenCaptureKit sources)
 
@@ -122,6 +170,24 @@ final class AudioState: ObservableObject {
                 self.systemInputVolume = hardwareVol
             }
             .store(in: &cancellables)
+
+        deviceManager.$defaultSystemOutputDevice
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] dev in
+                guard let self, let dev else { return }
+                self.defaultSystemOutputDevice = dev
+                let hardwareVol = self.deviceManager.getVolume(for: dev.audioDeviceID)
+                self.soundEffectsVolume = hardwareVol
+            }
+            .store(in: &cancellables)
+
+        // Load saved favorite bundle IDs
+        if let saved = UserDefaults.standard.stringArray(forKey: "SmurfAudio_FavoriteApps") {
+            self.favoriteBundleIDs = Set(saved)
+        } else {
+            // Default favorites common on macOS
+            self.favoriteBundleIDs = ["com.apple.Safari", "com.spotify.client", "us.zoom.xos", "com.apple.Music"]
+        }
 
         // Set initial engine volume
         engineController.setVolume(systemOutputVolume)
@@ -208,11 +274,22 @@ final class AudioState: ObservableObject {
             for newApp in discovered {
                 if let existing = runningApps.first(where: { $0.processID == newApp.processID }) {
                     existing.scApp = newApp.scApp
+                    existing.isFavorite = favoriteBundleIDs.contains(existing.bundleIdentifier)
                     updated.append(existing)
                 } else {
+                    newApp.isFavorite = favoriteBundleIDs.contains(newApp.bundleIdentifier)
                     updated.append(newApp)
                 }
             }
+
+            // Sort: favorites first, then alphabetically
+            updated.sort { a, b in
+                if a.isFavorite != b.isFavorite {
+                    return a.isFavorite && !b.isFavorite
+                }
+                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+            }
+
             self.runningApps = updated
 
             // Synchronize primary output exclusions if any apps terminated
@@ -225,6 +302,51 @@ final class AudioState: ObservableObject {
         } catch {
             print("[AudioState] Error discovering running apps: \(error)")
         }
+    }
+
+    // MARK: - Favorites & FX Controls
+
+    func toggleFavorite(for bundleID: String) {
+        if favoriteBundleIDs.contains(bundleID) {
+            favoriteBundleIDs.remove(bundleID)
+        } else {
+            favoriteBundleIDs.insert(bundleID)
+        }
+        UserDefaults.standard.set(Array(favoriteBundleIDs), forKey: "SmurfAudio_FavoriteApps")
+        for app in runningApps {
+            app.isFavorite = favoriteBundleIDs.contains(app.bundleIdentifier)
+        }
+        // Re-sort
+        runningApps.sort { a, b in
+            if a.isFavorite != b.isFavorite {
+                return a.isFavorite && !b.isFavorite
+            }
+            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+        }
+    }
+
+    func selectSystemOutputDevice(_ device: AudioDevice) {
+        do {
+            try deviceManager.setDefaultSystemOutputDevice(device)
+            defaultSystemOutputDevice = device
+        } catch {
+            print("[AudioState] Failed to set default system output device: \(error)")
+        }
+    }
+
+    func toggleFX(for id: String) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            if expandedFXID == id {
+                expandedFXID = nil
+            } else {
+                expandedFXID = id
+            }
+        }
+    }
+
+    func toggleWindowPin() {
+        isWindowPinned.toggle()
+        NotificationCenter.default.post(name: NSNotification.Name("TogglePinWindow"), object: nil)
     }
 
     /// Toggles audio capture for an individual application.
