@@ -75,7 +75,23 @@ struct PopoverContentView: View {
 
             Spacer()
 
-            // Screen Recording Permission Warning (if needed)
+            // Screen & Audio Recording Permission Warning (if needed)
+            if !audioState.permissionManager.hasScreenCapturePermission {
+                Button {
+                    audioState.showPermissionWindow()
+                } label: {
+                    Image(systemName: "display.trianglebadge.exclamationmark")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.orange)
+                        .frame(width: 26, height: 26)
+                        .background(Color.orange.opacity(0.12))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Screen & Audio Recording permission required (Click to configure)")
+            }
+
+            // Accessibility Permission Warning (if needed)
             if !audioState.mediaKeyInterceptor.hasAccessibilityPermission {
                 Button {
                     audioState.mediaKeyInterceptor.openAccessibilitySettings()
@@ -121,9 +137,7 @@ struct PopoverContentView: View {
                 Divider()
 
                 Button {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-                        NSWorkspace.shared.open(url)
-                    }
+                    audioState.showPermissionWindow()
                 } label: {
                     Label("Screen & Audio Permissions...", systemImage: "hand.raised.fill")
                 }

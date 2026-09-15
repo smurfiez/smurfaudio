@@ -17,6 +17,7 @@ final class AudioState: ObservableObject {
     lazy var pipeline = BlackHolePipeline(deviceManager: deviceManager)
     let captureManager = AppAudioCaptureManager()
     let mediaKeyInterceptor = MediaKeyInterceptor()
+    let permissionManager = PermissionManager()
 
     // MARK: Equalizer Reference
 
@@ -189,11 +190,29 @@ final class AudioState: ObservableObject {
             self.favoriteBundleIDs = ["com.apple.Safari", "com.spotify.client", "us.zoom.xos", "com.apple.Music"]
         }
 
+        // Permission check and callbacks
+        permissionManager.onPermissionGranted = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                print("[AudioState] TCC ScreenCapture permission granted callback triggered!")
+                await self.refreshRunningApps()
+                if self.isRoutingActive {
+                    try? await self.captureManager.updatePrimaryExclusions(
+                        allApps: self.runningApps,
+                        engineController: self.engineController
+                    )
+                }
+            }
+        }
+
         // Set initial engine volume
         engineController.setVolume(systemOutputVolume)
 
         // Setup Super Volume Keys
         setupMediaKeys()
+
+        // Check TCC Screen Recording permissions at startup
+        checkPermissionsAtLaunch()
 
         // Initial scan for running audio apps
         Task {
@@ -349,6 +368,30 @@ final class AudioState: ObservableObject {
         NotificationCenter.default.post(name: NSNotification.Name("TogglePinWindow"), object: nil)
     }
 
+    // MARK: - Permission Controls
+
+    /// Verifies Screen & System Audio Recording permissions on launch.
+    /// If declined or not yet granted, presents the dedicated permission popup window.
+    func checkPermissionsAtLaunch() {
+        let granted = permissionManager.checkScreenCapturePermission()
+        if !granted {
+            let requested = permissionManager.requestScreenCaptureAccess()
+            if !requested {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    guard let self else { return }
+                    if !self.permissionManager.hasScreenCapturePermission {
+                        self.showPermissionWindow()
+                    }
+                }
+            }
+        }
+    }
+
+    /// Displays the dedicated permission popup window.
+    func showPermissionWindow() {
+        PermissionWindowController.shared.show(permissionManager: permissionManager)
+    }
+
     /// Toggles audio capture for an individual application.
     func toggleCapture(for app: AppAudioSource) {
         if app.isCapturing {
@@ -366,6 +409,14 @@ final class AudioState: ObservableObject {
                 }
             }
         } else {
+            if !permissionManager.hasScreenCapturePermission {
+                if !permissionManager.checkScreenCapturePermission() {
+                    showPermissionWindow()
+                    app.captureError = "Screen Recording permission required"
+                    return
+                }
+            }
+
             if !isRoutingActive {
                 startRouting()
                 wasAutoRoutedForSecondaryOutput = true
@@ -381,6 +432,10 @@ final class AudioState: ObservableObject {
                 } catch {
                     await MainActor.run {
                         app.captureError = error.localizedDescription
+                        let nsError = error as NSError
+                        if nsError.code == -3801 || nsError.domain.contains("ScreenCaptureKit") || !self.permissionManager.hasScreenCapturePermission {
+                            self.showPermissionWindow()
+                        }
                     }
                     print("[AudioState] Failed to capture app \(app.name): \(error)")
                 }
@@ -391,6 +446,16 @@ final class AudioState: ObservableObject {
     /// Directs an individual application to a specific physical speaker or back to system default.
     func selectAppOutputDevice(app: AppAudioSource, deviceID: AudioDeviceID?) {
         let isRedirecting = (deviceID != nil)
+
+        // Check TCC permission before attempting capture redirection
+        if isRedirecting && !permissionManager.hasScreenCapturePermission {
+            if !permissionManager.checkScreenCapturePermission() {
+                showPermissionWindow()
+                app.captureError = "Screen Recording permission required"
+                return
+            }
+        }
+
         app.selectedOutputDeviceID = deviceID
 
         // 1. If any app is routed to a secondary speaker, BlackHole must be active
@@ -432,6 +497,10 @@ final class AudioState: ObservableObject {
             } catch {
                 await MainActor.run {
                     app.captureError = error.localizedDescription
+                    let nsError = error as NSError
+                    if nsError.code == -3801 || nsError.domain.contains("ScreenCaptureKit") || !self.permissionManager.hasScreenCapturePermission {
+                        self.showPermissionWindow()
+                    }
                 }
                 print("[AudioState] Failed to route app \(app.name): \(error)")
             }
@@ -470,10 +539,19 @@ final class AudioState: ObservableObject {
 
             // If any apps are currently redirected or capturing, update exclusions
             Task {
-                try? await captureManager.updatePrimaryExclusions(
-                    allApps: runningApps,
-                    engineController: engineController
-                )
+                do {
+                    try await captureManager.updatePrimaryExclusions(
+                        allApps: runningApps,
+                        engineController: engineController
+                    )
+                } catch {
+                    let nsError = error as NSError
+                    if nsError.code == -3801 || nsError.domain.contains("ScreenCaptureKit") || !self.permissionManager.hasScreenCapturePermission {
+                        await MainActor.run {
+                            self.showPermissionWindow()
+                        }
+                    }
+                }
             }
         } catch {
             print("[AudioState] Error starting routing: \(error)")

@@ -549,4 +549,34 @@ struct AudioStateTests {
     }
 }
 
+// MARK: - PermissionManager Tests
+
+@Suite("PermissionManager Tests")
+@MainActor
+struct PermissionManagerTests {
+
+    @Test("PermissionManager initialization and status inspection")
+    func permissionManagerInit() {
+        let manager = PermissionManager()
+        // Should query system status without crashing
+        _ = manager.checkScreenCapturePermission()
+        #expect(manager.isPolling == false)
+
+        manager.startPolling(interval: 0.1)
+        #expect(manager.isPolling == true)
+
+        manager.stopPolling()
+        #expect(manager.isPolling == false)
+    }
+
+    @Test("PermissionWindowController singleton lifecycle")
+    func permissionWindowControllerLifecycle() {
+        let controller = PermissionWindowController.shared
+        let manager = PermissionManager()
+        controller.show(permissionManager: manager)
+        controller.close()
+    }
+}
+
+
 

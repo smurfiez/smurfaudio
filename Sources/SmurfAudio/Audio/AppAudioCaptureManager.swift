@@ -322,6 +322,8 @@ private final class AppStreamOutputHandler: NSObject, SCStreamOutput, SCStreamDe
             let nsError = error as NSError
             if nsError.code == -3817 { // SCStreamErrorUserStopped
                 source.captureError = nil
+            } else if nsError.code == -3801 {
+                source.captureError = "Screen Recording permission declined"
             } else {
                 source.captureError = error.localizedDescription
             }
