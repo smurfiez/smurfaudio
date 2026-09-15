@@ -91,9 +91,6 @@ struct AppAudioRow: View {
                     currentSymbol: selectedDeviceSymbol,
                     availableDevices: selectableOutputDevices,
                     onSelectDevice: { device in
-                        if !app.isCapturing {
-                            onToggleCapture()
-                        }
                         onSelectOutputDevice(device.audioDeviceID)
                     },
                     onSelectDefault: {

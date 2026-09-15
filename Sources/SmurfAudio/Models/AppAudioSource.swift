@@ -44,6 +44,9 @@ final class AppAudioSource: ObservableObject, Identifiable {
     /// Dedicated AVAudioPlayerNode routed into the audio engine mixer.
     let playerNode = AVAudioPlayerNode()
 
+    /// Synchronizes audio buffer scheduling with audio engine node attachment/detachment.
+    let nodeLock = NSRecursiveLock()
+
     /// Dedicated per-app 10-band equalizer unit
     let eq = AudioUnitHosting()
 

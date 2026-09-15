@@ -66,6 +66,39 @@ final class AppAudioCaptureManager {
 
     private var activeStartingCaptures = Set<pid_t>()
 
+    /// Safely attaches and configures an app's player node under nodeLock protection.
+    private func safelyAttachNode(
+        source: AppAudioSource,
+        engineController: AudioEngineController,
+        targetDeviceID: AudioDeviceID?,
+        format: AVAudioFormat?
+    ) {
+        source.nodeLock.lock()
+        defer { source.nodeLock.unlock() }
+
+        engineController.attachAppPlayerNode(
+            source.playerNode,
+            eq: source.eq,
+            targetDeviceID: targetDeviceID,
+            format: format
+        )
+        if let engine = source.playerNode.engine, engine.isRunning {
+            source.playerNode.play()
+        }
+    }
+
+    /// Safely stops and detaches an app's player node under nodeLock protection.
+    private func safelyDetachNode(
+        source: AppAudioSource,
+        engineController: AudioEngineController
+    ) {
+        source.nodeLock.lock()
+        defer { source.nodeLock.unlock() }
+
+        source.playerNode.stop()
+        engineController.detachAppPlayerNode(source.playerNode, eq: source.eq)
+    }
+
     /// Starts an isolated audio capture stream for the given application.
     func startCapture(for source: AppAudioSource, engineController: AudioEngineController) async throws {
         guard !source.isCapturing else { return }
@@ -99,14 +132,22 @@ final class AppAudioCaptureManager {
         // Standard 48kHz stereo format
         let audioFormat = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)
 
+        // Clean up any existing stream before starting a new one
+        if let existingStream = source.stream {
+            if let existingHandler = streamHandlers.removeValue(forKey: source.id) {
+                existingHandler.invalidate()
+            }
+            existingStream.stopCapture { _ in }
+            source.stream = nil
+        }
+
         // 3. Attach app's playerNode into the AVAudioEngine graph and start playing
-        engineController.attachAppPlayerNode(
-            source.playerNode,
-            eq: source.eq,
+        safelyAttachNode(
+            source: source,
+            engineController: engineController,
             targetDeviceID: source.selectedOutputDeviceID,
             format: audioFormat
         )
-        source.playerNode.play()
 
         // 4. Create SCStream and register output handler
         let handler = AppStreamOutputHandler(source: source, defaultFormat: audioFormat)
@@ -135,19 +176,23 @@ final class AppAudioCaptureManager {
         guard source.isCapturing else { return }
 
         let audioFormat = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)
-        engineController.attachAppPlayerNode(
-            source.playerNode,
-            eq: source.eq,
+        safelyAttachNode(
+            source: source,
+            engineController: engineController,
             targetDeviceID: toDeviceID,
             format: audioFormat
         )
-        source.playerNode.play()
         print("[AppAudioCaptureManager] Switched output device for \(source.name) to: \(String(describing: toDeviceID))")
     }
 
     /// Stops audio capture for the given application.
     func stopCapture(for source: AppAudioSource, engineController: AudioEngineController) {
         guard source.isCapturing else { return }
+
+        // Immediately invalidate handler so any in-flight buffers are dropped
+        if let handler = streamHandlers.removeValue(forKey: source.id) {
+            handler.invalidate()
+        }
 
         if let stream = source.stream {
             stream.stopCapture { error in
@@ -156,12 +201,9 @@ final class AppAudioCaptureManager {
                 }
             }
         }
-
-        source.playerNode.stop()
-        engineController.detachAppPlayerNode(source.playerNode, eq: source.eq)
-
         source.stream = nil
-        streamHandlers.removeValue(forKey: source.id)
+
+        safelyDetachNode(source: source, engineController: engineController)
 
         DispatchQueue.main.async {
             source.isCapturing = false
@@ -242,6 +284,7 @@ final class AppAudioCaptureManager {
     /// Stops the primary exclusion stream and restores direct pass-through on the primary output engine.
     func stopPrimaryStream(engineController: AudioEngineController) {
         if let stream = primaryStream {
+            primaryHandler?.invalidate()
             stream.stopCapture { error in
                 if let error {
                     print("[AppAudioCaptureManager] Error stopping primary stream: \(error)")
@@ -270,16 +313,24 @@ final class AppAudioCaptureManager {
 private final class PrimaryStreamOutputHandler: NSObject, SCStreamOutput, SCStreamDelegate {
     private weak var playerNode: AVAudioPlayerNode?
     private let defaultFormat: AVAudioFormat?
+    private(set) var isInvalidated: Bool = false
 
     init(playerNode: AVAudioPlayerNode, defaultFormat: AVAudioFormat?) {
         self.playerNode = playerNode
         self.defaultFormat = defaultFormat
     }
 
+    func invalidate() {
+        isInvalidated = true
+    }
+
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        guard !isInvalidated else { return }
         guard type == .audio, sampleBuffer.isValid else { return }
         guard let pcmBuffer = AppStreamOutputHandler.pcmBuffer(from: sampleBuffer, fallbackFormat: defaultFormat) else { return }
         guard let player = self.playerNode else { return }
+        guard let engine = player.engine, engine.isRunning else { return }
+
         if !player.isPlaying {
             player.play()
         }
@@ -297,17 +348,35 @@ private final class PrimaryStreamOutputHandler: NSObject, SCStreamOutput, SCStre
 private final class AppStreamOutputHandler: NSObject, SCStreamOutput, SCStreamDelegate {
     private weak var source: AppAudioSource?
     private let defaultFormat: AVAudioFormat?
+    private(set) var isInvalidated: Bool = false
 
     init(source: AppAudioSource, defaultFormat: AVAudioFormat?) {
         self.source = source
         self.defaultFormat = defaultFormat
     }
 
+    func invalidate() {
+        isInvalidated = true
+    }
+
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        guard !isInvalidated else { return }
         guard type == .audio, sampleBuffer.isValid else { return }
         guard let pcmBuffer = Self.pcmBuffer(from: sampleBuffer, fallbackFormat: defaultFormat) else { return }
 
         guard let source = self.source else { return }
+
+        // Use try() on audio thread to avoid blocking; if node is undergoing attachment/detachment, skip frame safely
+        guard source.nodeLock.try() else { return }
+        defer { source.nodeLock.unlock() }
+
+        guard !isInvalidated else { return }
+
+        // Verify playerNode is still attached to a valid, running engine
+        guard let engine = source.playerNode.engine, engine.isRunning else {
+            return
+        }
+
         if !source.playerNode.isPlaying {
             source.playerNode.play()
         }

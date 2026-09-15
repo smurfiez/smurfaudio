@@ -187,15 +187,11 @@ final class AudioEngineController: ObservableObject {
                 secondaryEngines.removeValue(forKey: targetID)
             }
         } else {
+            node.stop()
             engine.disconnectNodeOutput(node)
             engine.disconnectNodeOutput(eq.eqNode)
             engine.detach(node)
             engine.detach(eq.eqNode)
-
-            if appMixer.numberOfInputs == 0 && !isPrimaryExclusionActive {
-                engine.stop()
-                isRunning = false
-            }
         }
     }
 
@@ -329,12 +325,18 @@ final class DeviceOutputEngine {
 
         if !engine.isRunning {
             engine.prepare()
-            try? engine.start()
-            isRunning = true
+            do {
+                try engine.start()
+                isRunning = true
+            } catch {
+                print("[DeviceOutputEngine] Failed to start engine for device \(deviceID): \(error)")
+                isRunning = false
+            }
         }
     }
 
     func detachApp(_ node: AVAudioPlayerNode, eq: AudioUnitHosting) {
+        node.stop()
         engine.disconnectNodeOutput(node)
         engine.disconnectNodeOutput(eq.eqNode)
         engine.detach(node)

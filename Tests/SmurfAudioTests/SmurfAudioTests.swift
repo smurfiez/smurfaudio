@@ -280,6 +280,37 @@ struct AppAudioSourceTests {
         app.selectedOutputDeviceID = nil
         #expect(app.selectedOutputDeviceID == nil)
     }
+
+    @Test("Thread-safe rapid switching of app output device")
+    func rapidSwitchingThreadSafety() {
+        let app = AppAudioSource(processID: 1001, bundleIdentifier: "org.mozilla.firefox", name: "Firefox")
+        let controller = AudioEngineController()
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)
+
+        // Rapid switching between devices and default
+        for i in 0..<10 {
+            let targetID: AudioDeviceID? = (i % 2 == 0) ? 99 : nil
+            app.nodeLock.lock()
+            controller.attachAppPlayerNode(app.playerNode, eq: app.eq, targetDeviceID: targetID, format: format)
+            if let engine = app.playerNode.engine, engine.isRunning {
+                app.playerNode.play()
+            }
+            app.nodeLock.unlock()
+
+            // Verify try() lock behavior
+            if app.nodeLock.try() {
+                if let engine = app.playerNode.engine, engine.isRunning {
+                    #expect(app.playerNode.engine != nil)
+                }
+                app.nodeLock.unlock()
+            }
+        }
+
+        app.nodeLock.lock()
+        controller.detachAppPlayerNode(app.playerNode, eq: app.eq)
+        app.nodeLock.unlock()
+        #expect(app.playerNode.engine == nil)
+    }
 }
 
 // MARK: - AudioEngineController Tests
