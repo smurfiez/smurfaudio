@@ -34,7 +34,7 @@ pkgbuild \
     --root "$BUILD_ROOT" \
     --scripts "installer_scripts" \
     --identifier "com.smurfaudio.installer" \
-    --version "1.0.0" \
+    --version "1.1.0" \
     --install-location "/" \
     "$PACKAGE_NAME"
 
