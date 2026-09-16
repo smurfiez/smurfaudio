@@ -19,6 +19,7 @@ final class AudioState: ObservableObject {
     let mediaKeyInterceptor = MediaKeyInterceptor()
     let permissionManager = PermissionManager()
     let profileStore = AppAudioProfileStore()
+    let updateManager = UpdateManager()
 
     // MARK: Equalizer Reference
 
@@ -235,6 +236,17 @@ final class AudioState: ObservableObject {
 
         // Auto-refresh when apps open or quit
         setupAppWorkspaceObservers()
+
+        // Background check for updates if enabled (suppressed during unit test executions)
+        let isTesting = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+                        NSClassFromString("XCTest") != nil ||
+                        ProcessInfo.processInfo.arguments.contains(where: { $0.contains("test") })
+        if !isTesting && updateManager.automaticallyChecksForUpdates {
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                await self?.updateManager.checkForUpdates(silent: true)
+            }
+        }
     }
 
     private func setupAppWorkspaceObservers() {
@@ -419,6 +431,11 @@ final class AudioState: ObservableObject {
     /// Displays the dedicated permission popup window.
     func showPermissionWindow() {
         PermissionWindowController.shared.show(permissionManager: permissionManager)
+    }
+
+    /// Displays the dedicated software update window.
+    func showUpdateWindow() {
+        UpdateWindowController.shared.show(updateManager: updateManager)
     }
 
     /// Toggles audio capture for an individual application.

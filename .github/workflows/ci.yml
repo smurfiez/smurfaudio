@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-build:
+    name: Test & Build (macOS)
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Xcode & Swift Version
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Run Swift Unit Tests
+        run: swift test -v
+
+      - name: Build SmurfAudio App Bundle (Release)
+        run: ./build_app.sh release
+
+      - name: Build Installer Package
+        run: ./create_installer.sh
+
+      - name: Build Disk Image (DMG)
+        run: ./create_dmg.sh
+
+      - name: Verify Build Artifacts
+        run: |
+          echo "Verifying generated files..."
+          test -d SmurfAudio.app
+          test -f SmurfAudioInstaller.pkg
+          test -f SmurfAudio.dmg
+          ls -lh SmurfAudio.app SmurfAudioInstaller.pkg SmurfAudio.dmg

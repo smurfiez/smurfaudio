@@ -39,3 +39,12 @@ Feature: SmurfAudio Audio Routing and Mixer Controls
     When "Spotify" is relaunched
     Then the restored profile applies volume at 60% and pan at -0.5
 
+  Scenario: GitHub Releases auto-updater detection and download
+    Given SmurfAudio is running version "1.3.0"
+    When the auto-updater queries GitHub for latest releases
+    Then a newer release version "1.4.0" is discovered
+    And the update manager selects "SmurfAudioInstaller.pkg" as the optimal payload
+    When the user triggers download of the update package
+    Then the download reaches 100% and is ready to install
+
+

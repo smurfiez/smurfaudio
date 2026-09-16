@@ -6,8 +6,14 @@ import AppKit
 /// The redesigned SoundSource-style root view hosted inside the menu bar and floating window.
 struct PopoverContentView: View {
     @ObservedObject var audioState: AudioState
+    @ObservedObject private var updateManager: UpdateManager
 
     private let greenColor = Color(red: 0.17, green: 0.76, blue: 0.41)
+
+    init(audioState: AudioState) {
+        self.audioState = audioState
+        self._updateManager = ObservedObject(wrappedValue: audioState.updateManager)
+    }
 
     var body: some View {
         VStack(spacing: 10) {
@@ -75,6 +81,32 @@ struct PopoverContentView: View {
 
             Spacer()
 
+            // Software Update Badge (if update available)
+            if updateManager.isUpdateAvailable {
+                Button {
+                    audioState.showUpdateWindow()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .bold))
+                        if let rel = updateManager.latestRelease {
+                            Text(rel.tagName)
+                                .font(.system(size: 10, weight: .bold))
+                        } else {
+                            Text("Update")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(greenColor)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("New version available! Click to view update details.")
+            }
+
             // Screen & Audio Recording Permission Warning (if needed)
             if !audioState.permissionManager.hasScreenCapturePermission {
                 Button {
@@ -133,6 +165,23 @@ struct PopoverContentView: View {
                 } label: {
                     Label("Reset Equalizer to Flat", systemImage: "slider.horizontal.below.rectangle")
                 }
+
+                Divider()
+
+                Button {
+                    audioState.showUpdateWindow()
+                    Task { await updateManager.checkForUpdates(silent: false) }
+                } label: {
+                    Label(
+                        updateManager.isUpdateAvailable ? "Update Available (\(updateManager.latestRelease?.tagName ?? "New"))" : "Check for Updates...",
+                        systemImage: updateManager.isUpdateAvailable ? "sparkles" : "arrow.triangle.2.circlepath"
+                    )
+                }
+
+                Toggle(
+                    "Automatically Check for Updates",
+                    isOn: $updateManager.automaticallyChecksForUpdates
+                )
 
                 Divider()
 

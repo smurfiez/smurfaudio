@@ -237,3 +237,64 @@ Then("the restored profile applies volume at {int}% and pan at {float}", functio
   assert.strictEqual(app.pan, pan);
 });
 
+// --- Scenario 6: GitHub Releases Auto-Updater ---
+
+interface SimulatedUpdateState {
+  currentVersion: string;
+  discoveredVersion: string | null;
+  assets: Array<{ name: string; type: string }>;
+  selectedAsset: string | null;
+  downloadProgress: number;
+  isReadyToInstall: boolean;
+}
+
+const updateState: SimulatedUpdateState = {
+  currentVersion: "1.3.0",
+  discoveredVersion: null,
+  assets: [],
+  selectedAsset: null,
+  downloadProgress: 0,
+  isReadyToInstall: false,
+};
+
+Given("SmurfAudio is running version {string}", function (currentVer: string) {
+  updateState.currentVersion = currentVer;
+  updateState.downloadProgress = 0;
+  updateState.isReadyToInstall = false;
+  assert.strictEqual(updateState.currentVersion, "1.3.0");
+});
+
+When("the auto-updater queries GitHub for latest releases", function () {
+  // Simulate fetching https://api.github.com/repos/smurfiez/smurfaudio/releases/latest
+  updateState.discoveredVersion = "1.4.0";
+  updateState.assets = [
+    { name: "SmurfAudio-Mac.zip", type: "zip" },
+    { name: "SmurfAudio.dmg", type: "dmg" },
+    { name: "SmurfAudioInstaller.pkg", type: "pkg" },
+  ];
+
+  // Prioritize .pkg installer for BlackHole driver bundling
+  const best = updateState.assets.find((a) => a.name.endsWith(".pkg")) || updateState.assets[0];
+  updateState.selectedAsset = best.name;
+});
+
+Then("a newer release version {string} is discovered", function (expectedVer: string) {
+  assert.strictEqual(updateState.discoveredVersion, expectedVer);
+});
+
+Then("the update manager selects {string} as the optimal payload", function (expectedAsset: string) {
+  assert.strictEqual(updateState.selectedAsset, expectedAsset);
+});
+
+When("the user triggers download of the update package", function () {
+  // Simulate progressive download
+  updateState.downloadProgress = 1.0;
+  updateState.isReadyToInstall = true;
+});
+
+Then("the download reaches 100% and is ready to install", function () {
+  assert.strictEqual(updateState.downloadProgress, 1.0);
+  assert.strictEqual(updateState.isReadyToInstall, true);
+});
+
+

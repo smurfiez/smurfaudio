@@ -130,10 +130,6 @@ final class MediaKeyInterceptor: ObservableObject {
         }
         if Thread.isMainThread {
             self.isListening = false
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                self?.isListening = false
-            }
         }
     }
 
