@@ -25,6 +25,12 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Install BlackHole Driver
+        run: |
+          sudo cp -R Prerequisites/BlackHole2ch.driver /Library/Audio/Plug-Ins/HAL/
+          sudo launchctl kickstart -kp system/com.apple.audio.coreaudiod 2>/dev/null || sudo killall -9 coreaudiod 2>/dev/null || true
+          sleep 2
+
       - name: Run Swift Unit Tests
         run: swift test -v
 
