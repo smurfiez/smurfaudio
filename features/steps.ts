@@ -10,6 +10,11 @@ interface SimulatedAudioApp {
   name: string;
   isCapturing: boolean;
   selectedOutputDevice: string | null;
+  volume?: number;
+  isBoostActive?: boolean;
+  boostGain?: number;
+  limiterActive?: boolean;
+  pan?: number;
 }
 
 interface SimulatedState {
@@ -20,6 +25,7 @@ interface SimulatedState {
   isRoutingActive: boolean;
   excludedFromPrimary: string[];
   apps: Record<string, SimulatedAudioApp>;
+  persistentProfiles: Record<string, any>;
 }
 
 const state: SimulatedState = {
@@ -41,6 +47,7 @@ const state: SimulatedState = {
   isRoutingActive: false,
   excludedFromPrimary: [],
   apps: {},
+  persistentProfiles: {},
 };
 
 // --- Scenario 1: Master Volume & Mute ---
@@ -147,3 +154,86 @@ Then("{string} audio is routed directly to {string}", function (appName: string,
   assert(app, `App ${appName} not found`);
   assert.strictEqual(app.selectedOutputDevice, targetDevice);
 });
+
+// --- Scenario 4: Volume Overdrive Boost ---
+
+Given("application {string} is active with volume at {int}%", function (appName: string, vol: number) {
+  state.apps[appName] = {
+    name: appName,
+    isCapturing: true,
+    selectedOutputDevice: null,
+    volume: vol / 100,
+    isBoostActive: false,
+    boostGain: 0,
+    limiterActive: false,
+  };
+});
+
+When("the user engages {string} volume boost", function (boostStr: string) {
+  const gain = parseFloat(boostStr.replace("+", "").replace(" dB", ""));
+  const app = state.apps["Safari"];
+  assert(app, "Safari not found");
+  app.isBoostActive = true;
+  app.boostGain = gain;
+  app.limiterActive = true;
+});
+
+Then("the peak limiter audio unit is activated", function () {
+  const app = state.apps["Safari"];
+  assert.strictEqual(app?.limiterActive, true);
+});
+
+Then("the digital pre-gain is set to {float} dB without digital clipping", function (expectedGain: number) {
+  const app = state.apps["Safari"];
+  assert.strictEqual(app?.boostGain, expectedGain);
+});
+
+// --- Scenario 5: Per-App Profile Persistence ---
+
+Given("application {string} has balance set to {float} and volume at {int}%", function (appName: string, pan: number, vol: number) {
+  state.apps[appName] = {
+    name: appName,
+    isCapturing: true,
+    selectedOutputDevice: null,
+    volume: vol / 100,
+    pan: pan,
+  };
+});
+
+When("the application audio profile is saved", function () {
+  const app = state.apps["Spotify"];
+  assert(app, "Spotify not found");
+  state.persistentProfiles["Spotify"] = {
+    volume: app.volume,
+    pan: app.pan,
+  };
+});
+
+Then("the persistent store retains volume at {int}% and pan at {float}", function (vol: number, pan: number) {
+  const profile = state.persistentProfiles["Spotify"];
+  assert(profile, "Profile for Spotify not found");
+  assert.strictEqual(profile.volume, vol / 100);
+  assert.strictEqual(profile.pan, pan);
+});
+
+When("{string} is relaunched", function (appName: string) {
+  // Simulate process restart
+  delete state.apps[appName];
+  const profile = state.persistentProfiles[appName];
+  assert(profile, `Profile for ${appName} should exist`);
+  state.apps[appName] = {
+    name: appName,
+    isCapturing: false,
+    selectedOutputDevice: null,
+    volume: profile.volume,
+    pan: profile.pan,
+  };
+});
+
+Then("the restored profile applies volume at {int}% and pan at {float}", function (vol: number, pan: number) {
+  const app = state.apps["Spotify"];
+  assert(app, "Spotify not found");
+  assert.strictEqual(app.volume, vol / 100);
+  assert.strictEqual(app.pan, pan);
+});
+

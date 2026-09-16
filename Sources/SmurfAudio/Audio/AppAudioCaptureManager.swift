@@ -24,6 +24,7 @@ final class AppAudioCaptureManager {
 
     // MARK: - Primary Exclusion Stream State
 
+    var onPrimaryMeterUpdate: ((Float) -> Void)?
     private var primaryStream: SCStream?
     private var primaryHandler: PrimaryStreamOutputHandler?
     private var currentExcludedPIDs: Set<pid_t> = []
@@ -79,6 +80,8 @@ final class AppAudioCaptureManager {
         engineController.attachAppPlayerNode(
             source.playerNode,
             eq: source.eq,
+            limiter: source.limiter,
+            pan: source.pan,
             targetDeviceID: targetDeviceID,
             format: format
         )
@@ -96,7 +99,7 @@ final class AppAudioCaptureManager {
         defer { source.nodeLock.unlock() }
 
         source.playerNode.stop()
-        engineController.detachAppPlayerNode(source.playerNode, eq: source.eq)
+        engineController.detachAppPlayerNode(source.playerNode, eq: source.eq, limiter: source.limiter)
     }
 
     /// Starts an isolated audio capture stream for the given application.
@@ -268,7 +271,13 @@ final class AppAudioCaptureManager {
             config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
 
             let audioFormat = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)
-            let handler = PrimaryStreamOutputHandler(playerNode: playerNode, defaultFormat: audioFormat)
+            let handler = PrimaryStreamOutputHandler(
+                playerNode: playerNode,
+                defaultFormat: audioFormat,
+                onMeterUpdate: { [weak self] level in
+                    self?.onPrimaryMeterUpdate?(level)
+                }
+            )
             let stream = SCStream(filter: filter, configuration: config, delegate: handler)
             try stream.addStreamOutput(handler, type: .audio, sampleHandlerQueue: audioProcessingQueue)
 
@@ -313,11 +322,15 @@ final class AppAudioCaptureManager {
 private final class PrimaryStreamOutputHandler: NSObject, SCStreamOutput, SCStreamDelegate {
     private weak var playerNode: AVAudioPlayerNode?
     private let defaultFormat: AVAudioFormat?
+    private let onMeterUpdate: ((Float) -> Void)?
+    private let meter = AudioLevelMeter()
+    private var lastMeterTime = DispatchTime.now()
     private(set) var isInvalidated: Bool = false
 
-    init(playerNode: AVAudioPlayerNode, defaultFormat: AVAudioFormat?) {
+    init(playerNode: AVAudioPlayerNode, defaultFormat: AVAudioFormat?, onMeterUpdate: ((Float) -> Void)? = nil) {
         self.playerNode = playerNode
         self.defaultFormat = defaultFormat
+        self.onMeterUpdate = onMeterUpdate
     }
 
     func invalidate() {
@@ -335,6 +348,15 @@ private final class PrimaryStreamOutputHandler: NSObject, SCStreamOutput, SCStre
             player.play()
         }
         player.scheduleBuffer(pcmBuffer)
+
+        let now = DispatchTime.now()
+        if now.uptimeNanoseconds - lastMeterTime.uptimeNanoseconds > 33_000_000 {
+            lastMeterTime = now
+            let level = meter.processBuffer(pcmBuffer)
+            DispatchQueue.main.async { [weak self] in
+                self?.onMeterUpdate?(level)
+            }
+        }
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
@@ -348,6 +370,7 @@ private final class PrimaryStreamOutputHandler: NSObject, SCStreamOutput, SCStre
 private final class AppStreamOutputHandler: NSObject, SCStreamOutput, SCStreamDelegate {
     private weak var source: AppAudioSource?
     private let defaultFormat: AVAudioFormat?
+    private var lastMeterTime = DispatchTime.now()
     private(set) var isInvalidated: Bool = false
 
     init(source: AppAudioSource, defaultFormat: AVAudioFormat?) {
@@ -381,6 +404,15 @@ private final class AppStreamOutputHandler: NSObject, SCStreamOutput, SCStreamDe
             source.playerNode.play()
         }
         source.playerNode.scheduleBuffer(pcmBuffer)
+
+        let now = DispatchTime.now()
+        if now.uptimeNanoseconds - lastMeterTime.uptimeNanoseconds > 33_000_000 {
+            lastMeterTime = now
+            let level = source.meter.processBuffer(pcmBuffer)
+            DispatchQueue.main.async { [weak source] in
+                source?.meterLevel = level
+            }
+        }
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {

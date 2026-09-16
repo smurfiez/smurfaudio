@@ -28,6 +28,9 @@ final class AudioEngineController: ObservableObject {
     /// The master 10-band equalizer node
     let eqHosting = AudioUnitHosting()
 
+    /// The master Peak Limiter node for overdrive boost protection
+    let masterLimiter = PeakLimiterHosting()
+
     private var currentTargetDevice: AudioDevice?
 
     // MARK: - Secondary Audio Engines (Per-App Separate Speaker Routing)
@@ -51,11 +54,12 @@ final class AudioEngineController: ObservableObject {
     // MARK: - Audio Graph Setup
 
     private func setupGraph() {
-        // Attach intermediate mixers, primary capture node, and EQ unit
+        // Attach intermediate mixers, primary capture node, EQ unit, and master limiter
         engine.attach(globalMixer)
         engine.attach(appMixer)
         engine.attach(primarySystemPlayerNode)
         engine.attach(eqHosting.eqNode)
+        engine.attach(masterLimiter.limiterNode)
 
         let standardFormat = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)
 
@@ -66,9 +70,10 @@ final class AudioEngineController: ObservableObject {
         // Connect primary exclusion capture player node to globalMixer
         engine.connect(primarySystemPlayerNode, to: globalMixer, format: standardFormat)
 
-        // Route mainMixerNode through master EQ into outputNode
+        // Route mainMixerNode through master EQ and Limiter into outputNode
         engine.connect(engine.mainMixerNode, to: eqHosting.eqNode, format: standardFormat)
-        engine.connect(eqHosting.eqNode, to: engine.outputNode, format: standardFormat)
+        engine.connect(eqHosting.eqNode, to: masterLimiter.limiterNode, format: standardFormat)
+        engine.connect(masterLimiter.limiterNode, to: engine.outputNode, format: standardFormat)
     }
 
     // MARK: - Primary Exclusion Stream Control
@@ -135,15 +140,17 @@ final class AudioEngineController: ObservableObject {
 
     // MARK: - Per-App Player Nodes & Separate Speaker Routing
 
-    /// Attaches an app's player node and dedicated EQ into either the primary engine or a secondary speaker engine.
+    /// Attaches an app's player node, dedicated EQ, and peak limiter into either the primary engine or a secondary speaker engine.
     func attachAppPlayerNode(
         _ node: AVAudioPlayerNode,
         eq: AudioUnitHosting,
+        limiter: PeakLimiterHosting? = nil,
+        pan: Float = 0.0,
         targetDeviceID: AudioDeviceID?,
         format: AVAudioFormat?
     ) {
         // Detach from previous engine if needed
-        detachAppPlayerNode(node, eq: eq)
+        detachAppPlayerNode(node, eq: eq, limiter: limiter)
         nodeEngineMap[ObjectIdentifier(node)] = targetDeviceID
 
         if let targetID = targetDeviceID, targetID != currentTargetDevice?.audioDeviceID {
@@ -153,14 +160,22 @@ final class AudioEngineController: ObservableObject {
                 secondaryEngines[targetID] = e
                 return e
             }()
-            secEngine.attachApp(node, eq: eq, format: format)
+            secEngine.attachApp(node, eq: eq, limiter: limiter, format: format)
             print("[AudioEngineController] Attached app to secondary speaker ID: \(targetID)")
         } else {
             // Route to primary master engine
             engine.attach(node)
             engine.attach(eq.eqNode)
-            engine.connect(node, to: eq.eqNode, format: format)
-            engine.connect(eq.eqNode, to: appMixer, format: format)
+
+            if let lim = limiter {
+                engine.attach(lim.limiterNode)
+                engine.connect(node, to: eq.eqNode, format: format)
+                engine.connect(eq.eqNode, to: lim.limiterNode, format: format)
+                engine.connect(lim.limiterNode, to: appMixer, format: format)
+            } else {
+                engine.connect(node, to: eq.eqNode, format: format)
+                engine.connect(eq.eqNode, to: appMixer, format: format)
+            }
 
             if !engine.isRunning {
                 if let output = currentTargetDevice {
@@ -174,14 +189,14 @@ final class AudioEngineController: ObservableObject {
         }
     }
 
-    /// Detaches an app's player node and EQ from whatever engine it is currently routed to.
-    func detachAppPlayerNode(_ node: AVAudioPlayerNode, eq: AudioUnitHosting) {
+    /// Detaches an app's player node, EQ, and limiter from whatever engine it is currently routed to.
+    func detachAppPlayerNode(_ node: AVAudioPlayerNode, eq: AudioUnitHosting, limiter: PeakLimiterHosting? = nil) {
         guard let currentTarget = nodeEngineMap.removeValue(forKey: ObjectIdentifier(node)) else {
             return
         }
 
         if let targetID = currentTarget, targetID != currentTargetDevice?.audioDeviceID {
-            secondaryEngines[targetID]?.detachApp(node, eq: eq)
+            secondaryEngines[targetID]?.detachApp(node, eq: eq, limiter: limiter)
             if secondaryEngines[targetID]?.activeAppCount == 0 {
                 secondaryEngines[targetID]?.stop()
                 secondaryEngines.removeValue(forKey: targetID)
@@ -190,6 +205,10 @@ final class AudioEngineController: ObservableObject {
             node.stop()
             engine.disconnectNodeOutput(node)
             engine.disconnectNodeOutput(eq.eqNode)
+            if let lim = limiter {
+                engine.disconnectNodeOutput(lim.limiterNode)
+                engine.detach(lim.limiterNode)
+            }
             engine.detach(node)
             engine.detach(eq.eqNode)
         }
@@ -234,6 +253,8 @@ final class AudioEngineController: ObservableObject {
             attachAppPlayerNode(
                 app.playerNode,
                 eq: app.eq,
+                limiter: app.limiter,
+                pan: app.pan,
                 targetDeviceID: app.selectedOutputDeviceID,
                 format: app.playerNode.outputFormat(forBus: 0)
             )
@@ -316,11 +337,19 @@ final class DeviceOutputEngine {
         }
     }
 
-    func attachApp(_ node: AVAudioPlayerNode, eq: AudioUnitHosting, format: AVAudioFormat?) {
+    func attachApp(_ node: AVAudioPlayerNode, eq: AudioUnitHosting, limiter: PeakLimiterHosting? = nil, format: AVAudioFormat?) {
         engine.attach(node)
         engine.attach(eq.eqNode)
-        engine.connect(node, to: eq.eqNode, format: format)
-        engine.connect(eq.eqNode, to: mixer, format: format)
+
+        if let lim = limiter {
+            engine.attach(lim.limiterNode)
+            engine.connect(node, to: eq.eqNode, format: format)
+            engine.connect(eq.eqNode, to: lim.limiterNode, format: format)
+            engine.connect(lim.limiterNode, to: mixer, format: format)
+        } else {
+            engine.connect(node, to: eq.eqNode, format: format)
+            engine.connect(eq.eqNode, to: mixer, format: format)
+        }
         activeAppCount += 1
 
         if !engine.isRunning {
@@ -335,10 +364,14 @@ final class DeviceOutputEngine {
         }
     }
 
-    func detachApp(_ node: AVAudioPlayerNode, eq: AudioUnitHosting) {
+    func detachApp(_ node: AVAudioPlayerNode, eq: AudioUnitHosting, limiter: PeakLimiterHosting? = nil) {
         node.stop()
         engine.disconnectNodeOutput(node)
         engine.disconnectNodeOutput(eq.eqNode)
+        if let lim = limiter {
+            engine.disconnectNodeOutput(lim.limiterNode)
+            engine.detach(lim.limiterNode)
+        }
         engine.detach(node)
         engine.detach(eq.eqNode)
         activeAppCount = max(0, activeAppCount - 1)

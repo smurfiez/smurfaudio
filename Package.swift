@@ -12,17 +12,7 @@ let package = Package(
         .testTarget(
             name: "SmurfAudioTests",
             dependencies: ["SmurfAudio"],
-            path: "Tests/SmurfAudioTests",
-            swiftSettings: [
-                .unsafeFlags(["-F", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks"])
-            ],
-            linkerSettings: [
-                .unsafeFlags([
-                    "-F", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
-                    "-Xlinker", "-rpath", "-Xlinker", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
-                    "-Xlinker", "-rpath", "-Xlinker", "/Library/Developer/CommandLineTools/Library/Developer/usr/lib"
-                ])
-            ]
+            path: "Tests/SmurfAudioTests"
         )
     ]
 )

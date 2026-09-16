@@ -66,8 +66,12 @@ struct SystemSectionCard: View {
                     outputRow
 
                     if audioState.expandedFXID == "output" {
-                        InlineFXDrawerView(eq: audioState.eq, title: "Master Output")
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        InlineFXDrawerView(
+                            eq: audioState.eq,
+                            title: "Master Output",
+                            boostGain: $audioState.masterBoostGain
+                        )
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
 
                     // 2. Input Row
@@ -107,8 +111,8 @@ struct SystemSectionCard: View {
         HStack(spacing: 8) {
             // Level Pill
             LevelMeterPill(
-                isActive: !audioState.isMasterMuted && audioState.systemOutputVolume > 0,
-                level: CGFloat(audioState.systemOutputVolume)
+                isActive: !audioState.isMasterMuted && (audioState.masterMeterLevel > 0 || audioState.systemOutputVolume > 0),
+                level: CGFloat(audioState.masterMeterLevel > 0 ? audioState.masterMeterLevel : (audioState.isRoutingActive ? audioState.systemOutputVolume * 0.25 : 0.0))
             )
 
             // Icon box

@@ -609,5 +609,137 @@ struct PermissionManagerTests {
     }
 }
 
+// MARK: - Phase 2 Suites
+
+@Suite("PeakLimiterHosting Tests")
+struct PeakLimiterHostingTests {
+
+    @Test("PeakLimiter initial state and bypass")
+    func limiterInitialState() {
+        let limiter = PeakLimiterHosting()
+        #expect(limiter.isBoostActive == false)
+        #expect(limiter.boostGain == 6.0)
+        #expect(limiter.limiterNode.bypass == true)
+    }
+
+    @Test("PeakLimiter enabling boost unbypasses limiter and sets pre-gain")
+    func limiterBoostEnable() {
+        let limiter = PeakLimiterHosting()
+        limiter.boostGain = 12.0
+        limiter.isBoostActive = true
+        #expect(limiter.limiterNode.bypass == false)
+
+        limiter.isBoostActive = false
+        #expect(limiter.limiterNode.bypass == true)
+    }
+}
+
+@Suite("AudioLevelMeter Tests")
+struct AudioLevelMeterTests {
+
+    @Test("AudioLevelMeter calculation on PCM buffer")
+    func meterPCMBuffer() {
+        let meter = AudioLevelMeter()
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 512)!
+        buffer.frameLength = 512
+
+        // Fill with silence
+        for ch in 0..<Int(format.channelCount) {
+            let data = buffer.floatChannelData![ch]
+            for i in 0..<512 {
+                data[i] = 0.0
+            }
+        }
+        let silentLevel = meter.processBuffer(buffer)
+        #expect(silentLevel == 0.0)
+
+        // Fill with full amplitude sine/square wave
+        for ch in 0..<Int(format.channelCount) {
+            let data = buffer.floatChannelData![ch]
+            for i in 0..<512 {
+                data[i] = (i % 2 == 0) ? 0.8 : -0.8
+            }
+        }
+        let activeLevel = meter.processBuffer(buffer)
+        #expect(activeLevel > 0.5)
+
+        meter.reset()
+        let resetLevel = meter.processBuffer(buffer)
+        #expect(resetLevel > 0.0)
+    }
+}
+
+@Suite("AppAudioProfileStore Tests")
+struct AppAudioProfileStoreTests {
+
+    @Test("Profile serialization, saving and loading roundtrip")
+    func profileStoreRoundtrip() {
+        let store = AppAudioProfileStore()
+        let testBundleID = "com.smurfaudio.test.app"
+
+        let profile = AppAudioProfile(
+            volume: 0.42,
+            isMuted: true,
+            isBoostActive: true,
+            boostGain: 12.0,
+            pan: -0.5,
+            isMono: true,
+            targetDeviceUID: "SpeakerUID123",
+            eqPreset: EQPreset.bassBoost.rawValue,
+            eqBandGains: [6.0, 5.5, 4.5, 3.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            isEQBypassed: false
+        )
+
+        store.saveProfile(for: testBundleID, profile: profile)
+
+        // Allow background queue persistence
+        Thread.sleep(forTimeInterval: 0.05)
+
+        let loaded = store.profile(for: testBundleID)
+        #expect(loaded != nil)
+        #expect(loaded?.volume == 0.42)
+        #expect(loaded?.isMuted == true)
+        #expect(loaded?.isBoostActive == true)
+        #expect(loaded?.boostGain == 12.0)
+        #expect(loaded?.pan == -0.5)
+        #expect(loaded?.isMono == true)
+        #expect(loaded?.targetDeviceUID == "SpeakerUID123")
+        #expect(loaded?.eqPreset == EQPreset.bassBoost.rawValue)
+
+        store.removeProfile(for: testBundleID)
+        Thread.sleep(forTimeInterval: 0.05)
+        #expect(store.profile(for: testBundleID) == nil)
+    }
+
+    @Test("AppAudioSource profile export and restoration")
+    func appSourceProfileExportRestore() {
+        let app = AppAudioSource(processID: 4321, bundleIdentifier: "com.test.export", name: "TestExport")
+        app.volume = 0.65
+        app.isMuted = false
+        app.isBoostActive = true
+        app.boostGain = 6.0
+        app.pan = 0.75
+        app.isMono = true
+        app.eq.selectedPreset = .vocal
+
+        let exported = app.makeProfile(targetDeviceUID: "UID999")
+        #expect(exported.volume == 0.65)
+        #expect(exported.pan == 0.75)
+        #expect(exported.isMono == true)
+        #expect(exported.isBoostActive == true)
+        #expect(exported.targetDeviceUID == "UID999")
+
+        let newApp = AppAudioSource(processID: 5555, bundleIdentifier: "com.test.export", name: "TestExport")
+        newApp.applyProfile(exported)
+        #expect(newApp.volume == 0.65)
+        #expect(newApp.pan == 0.75)
+        #expect(newApp.isMono == true)
+        #expect(newApp.isBoostActive == true)
+        #expect(newApp.eq.selectedPreset == .vocal)
+    }
+}
+
+
 
 

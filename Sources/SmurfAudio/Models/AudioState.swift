@@ -18,6 +18,7 @@ final class AudioState: ObservableObject {
     let captureManager = AppAudioCaptureManager()
     let mediaKeyInterceptor = MediaKeyInterceptor()
     let permissionManager = PermissionManager()
+    let profileStore = AppAudioProfileStore()
 
     // MARK: Equalizer Reference
 
@@ -44,6 +45,10 @@ final class AudioState: ObservableObject {
     /// The physical destination device when routing through BlackHole.
     @Published var targetOutputDevice: AudioDevice?
 
+    // MARK: Live Real-Time Meter Levels
+
+    @Published var masterMeterLevel: Float = 0.0
+
     // MARK: Volume & Boost State
 
     @Published var systemOutputVolume: Float = 0.75 {
@@ -69,10 +74,12 @@ final class AudioState: ObservableObject {
     }
     @Published var isMasterBoostActive: Bool = false {
         didSet {
-            // Overdrive boost: +6 dB boost on master EQ preamp when active
-            if isMasterBoostActive {
-                eq.setGain(forBand: 0, gain: min(12.0, eq.bands[0].gain + 3.0))
-            }
+            engineController.masterLimiter.isBoostActive = isMasterBoostActive
+        }
+    }
+    @Published var masterBoostGain: Float = 6.0 {
+        didSet {
+            engineController.masterLimiter.boostGain = masterBoostGain
         }
     }
 
@@ -205,6 +212,13 @@ final class AudioState: ObservableObject {
             }
         }
 
+        // Capture primary meter updates
+        captureManager.onPrimaryMeterUpdate = { [weak self] level in
+            DispatchQueue.main.async {
+                self?.masterMeterLevel = level
+            }
+        }
+
         // Set initial engine volume
         engineController.setVolume(systemOutputVolume)
 
@@ -271,6 +285,13 @@ final class AudioState: ObservableObject {
 
     // MARK: - Per-App Audio Management
 
+    /// Persists current app settings (volume, mute, boost, pan, EQ, routing) into profile store.
+    func persistProfile(for app: AppAudioSource) {
+        let deviceUID = outputDevices.first(where: { $0.audioDeviceID == app.selectedOutputDeviceID })?.uid
+        let profile = app.makeProfile(targetDeviceUID: deviceUID)
+        profileStore.saveProfile(for: app.bundleIdentifier, profile: profile)
+    }
+
     /// Refreshes the list of running user applications capable of audio capture.
     @MainActor
     func refreshRunningApps() async {
@@ -297,6 +318,14 @@ final class AudioState: ObservableObject {
                     updated.append(existing)
                 } else {
                     newApp.isFavorite = favoriteBundleIDs.contains(newApp.bundleIdentifier)
+                    // Restore saved profile if available
+                    if let savedProfile = profileStore.profile(for: newApp.bundleIdentifier) {
+                        newApp.applyProfile(savedProfile)
+                        if let uid = savedProfile.targetDeviceUID,
+                           let match = outputDevices.first(where: { $0.uid == uid }) {
+                            newApp.selectedOutputDeviceID = match.audioDeviceID
+                        }
+                    }
                     updated.append(newApp)
                 }
             }
@@ -457,6 +486,7 @@ final class AudioState: ObservableObject {
         }
 
         app.selectedOutputDeviceID = deviceID
+        persistProfile(for: app)
 
         // 1. If any app is routed to a secondary speaker, BlackHole must be active
         // so that the app does not play directly to the physical default hardware.

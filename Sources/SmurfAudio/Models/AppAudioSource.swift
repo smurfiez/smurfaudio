@@ -34,7 +34,18 @@ final class AppAudioSource: ObservableObject, Identifiable {
     @Published var selectedOutputDeviceID: AudioDeviceID?
 
     /// Whether overdrive boost is engaged (+6 dB gain boost)
-    @Published var isBoostActive: Bool = false
+    @Published var isBoostActive: Bool = false {
+        didSet {
+            limiter.isBoostActive = isBoostActive
+        }
+    }
+
+    /// Boost overdrive gain amount (e.g. 6.0 dB or 12.0 dB)
+    @Published var boostGain: Float = 6.0 {
+        didSet {
+            limiter.boostGain = boostGain
+        }
+    }
 
     /// Whether this application is pinned to the user's favorites
     @Published var isFavorite: Bool = false
@@ -49,6 +60,21 @@ final class AppAudioSource: ObservableObject, Identifiable {
 
     /// Dedicated per-app 10-band equalizer unit
     let eq = AudioUnitHosting()
+
+    /// Dedicated per-app Peak Limiter for overdrive boost protection
+    let limiter = PeakLimiterHosting()
+
+    /// Real-time audio level meter
+    let meter = AudioLevelMeter()
+
+    /// Current live audio level (0.0 to 1.0) for LevelMeterPill
+    @Published var meterLevel: Float = 0.0
+
+    /// Stereo pan: -1.0 (full left) to +1.0 (full right), 0.0 = center
+    @Published var pan: Float = 0.0
+
+    /// Downmix to mono toggle
+    @Published var isMono: Bool = false
 
     /// The ScreenCaptureKit representation of this application.
     var scApp: SCRunningApplication?
@@ -77,5 +103,41 @@ final class AppAudioSource: ObservableObject, Identifiable {
         self.name = name
         self.scApp = scApp
         self.playerNode.volume = volume
+    }
+
+    // MARK: - Profile Serialization
+
+    func makeProfile(targetDeviceUID: String?) -> AppAudioProfile {
+        AppAudioProfile(
+            volume: volume,
+            isMuted: isMuted,
+            isBoostActive: isBoostActive,
+            boostGain: limiter.boostGain,
+            pan: pan,
+            isMono: isMono,
+            targetDeviceUID: targetDeviceUID,
+            eqPreset: eq.selectedPreset.rawValue,
+            eqBandGains: eq.bands.map { $0.gain },
+            isEQBypassed: eq.isBypassed
+        )
+    }
+
+    func applyProfile(_ profile: AppAudioProfile) {
+        self.volume = profile.volume
+        self.isMuted = profile.isMuted
+        self.isBoostActive = profile.isBoostActive
+        self.limiter.boostGain = profile.boostGain
+        self.limiter.isBoostActive = profile.isBoostActive
+        self.pan = profile.pan
+        self.isMono = profile.isMono
+        if let presetName = profile.eqPreset, let preset = EQPreset(rawValue: presetName) {
+            self.eq.selectedPreset = preset
+        }
+        if let gains = profile.eqBandGains {
+            for (index, gain) in gains.enumerated() {
+                self.eq.setGain(forBand: index, gain: gain)
+            }
+        }
+        self.eq.isBypassed = profile.isEQBypassed
     }
 }

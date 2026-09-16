@@ -25,3 +25,17 @@ Feature: SmurfAudio Audio Routing and Mixer Controls
     Then the BlackHole virtual audio pipeline is engaged
     And "Music" is excluded from the primary MacBook speakers mix
     And "Music" audio is routed directly to "USB Headset"
+
+  Scenario: Volume overdrive boost with peak limiter protection
+    Given application "Safari" is active with volume at 100%
+    When the user engages "+6 dB" volume boost
+    Then the peak limiter audio unit is activated
+    And the digital pre-gain is set to 6.0 dB without digital clipping
+
+  Scenario: Per-app audio profile persistence and stereo balance
+    Given application "Spotify" has balance set to -0.5 and volume at 60%
+    When the application audio profile is saved
+    Then the persistent store retains volume at 60% and pan at -0.5
+    When "Spotify" is relaunched
+    Then the restored profile applies volume at 60% and pan at -0.5
+

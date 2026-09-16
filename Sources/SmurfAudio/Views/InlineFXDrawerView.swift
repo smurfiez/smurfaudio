@@ -4,6 +4,11 @@ import SwiftUI
 struct InlineFXDrawerView: View {
     @ObservedObject var eq: AudioUnitHosting
     var title: String = "Equalizer"
+    var pan: Binding<Float>? = nil
+    var isMono: Binding<Bool>? = nil
+    var boostGain: Binding<Float>? = nil
+
+    private let greenColor = Color(red: 0.17, green: 0.76, blue: 0.41)
 
     var body: some View {
         VStack(spacing: 8) {
@@ -15,7 +20,7 @@ struct InlineFXDrawerView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "slider.vertical.3")
                         .font(.system(size: 11))
-                        .foregroundStyle(Color(red: 0.17, green: 0.76, blue: 0.41))
+                        .foregroundStyle(greenColor)
 
                     Text("\(title) (10-Band)")
                         .font(.system(size: 11, weight: .semibold))
@@ -59,7 +64,79 @@ struct InlineFXDrawerView: View {
                 }
             }
             .padding(.horizontal, 8)
-            .padding(.bottom, 6)
+            .padding(.bottom, 2)
+
+            // Dynamics & Stereo Controls Tray
+            if pan != nil || isMono != nil || boostGain != nil {
+                Divider()
+                    .padding(.horizontal, 6)
+
+                HStack(spacing: 12) {
+                    if let panBinding = pan {
+                        HStack(spacing: 5) {
+                            Text("Balance")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            Text("L")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.secondary)
+                            Slider(value: panBinding, in: -1.0...1.0)
+                                .frame(width: 75)
+                                .tint(greenColor)
+                            Text("R")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.secondary)
+                            if panBinding.wrappedValue != 0.0 {
+                                Button("Center") {
+                                    panBinding.wrappedValue = 0.0
+                                }
+                                .font(.system(size: 8, weight: .medium))
+                                .buttonStyle(.borderless)
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    if let monoBinding = isMono {
+                        Button {
+                            monoBinding.wrappedValue.toggle()
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: monoBinding.wrappedValue ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 8))
+                                Text("Mono")
+                                    .font(.system(size: 9, weight: .semibold))
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(monoBinding.wrappedValue ? greenColor.opacity(0.18) : Color.primary.opacity(0.06))
+                            .foregroundStyle(monoBinding.wrappedValue ? greenColor : Color.secondary)
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Downmix stereo audio to mono")
+                    }
+
+                    if let boostBinding = boostGain {
+                        Menu {
+                            Button("+6 dB (2x Volume)") {
+                                boostBinding.wrappedValue = 6.0
+                            }
+                            Button("+12 dB (4x Volume)") {
+                                boostBinding.wrappedValue = 12.0
+                            }
+                        } label: {
+                            Text(String(format: "+%.0f dB Boost", boostBinding.wrappedValue))
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(greenColor)
+                        }
+                        .menuStyle(.borderlessButton)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 4)
+            }
         }
         .padding(.vertical, 4)
         .background(

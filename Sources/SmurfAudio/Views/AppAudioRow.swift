@@ -29,8 +29,8 @@ struct AppAudioRow: View {
 
                 // Level meter pill
                 LevelMeterPill(
-                    isActive: app.isCapturing && !app.isMuted && app.volume > 0,
-                    level: CGFloat(app.volume)
+                    isActive: app.isCapturing && !app.isMuted && (app.meterLevel > 0 || app.volume > 0),
+                    level: CGFloat(app.meterLevel > 0 ? app.meterLevel : (app.isCapturing ? app.volume * 0.25 : 0.0))
                 )
 
                 // App Icon
@@ -117,10 +117,16 @@ struct AppAudioRow: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
 
-            // Inline FX Equalizer Drawer
+            // Inline FX Equalizer & Dynamics Drawer
             if isFXExpanded {
-                InlineFXDrawerView(eq: app.eq, title: "\(app.name) Equalizer")
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                InlineFXDrawerView(
+                    eq: app.eq,
+                    title: "\(app.name) Equalizer",
+                    pan: $app.pan,
+                    isMono: $app.isMono,
+                    boostGain: $app.boostGain
+                )
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             // Capture error if any
