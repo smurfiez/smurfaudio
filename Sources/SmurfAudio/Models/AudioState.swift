@@ -200,7 +200,7 @@ final class AudioState: ObservableObject {
 
         // Permission check and callbacks
         permissionManager.onPermissionGranted = { [weak self] in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 print("[AudioState] TCC ScreenCapture permission granted callback triggered!")
                 await self.refreshRunningApps()
@@ -256,7 +256,7 @@ final class AudioState: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { await self?.refreshRunningApps() }
+            Task { [weak self] in await self?.refreshRunningApps() }
         }
 
         center.addObserver(
@@ -264,7 +264,7 @@ final class AudioState: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { await self?.refreshRunningApps() }
+            Task { [weak self] in await self?.refreshRunningApps() }
         }
     }
 
