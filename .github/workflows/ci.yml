@@ -15,8 +15,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Show Xcode & Swift Version
+      - name: Select Xcode 16 (Swift Testing Support)
         run: |
+          XCODE_PATH=$(find /Applications -maxdepth 1 -name "Xcode_16*.app" | sort -V | tail -n 1)
+          if [ -n "$XCODE_PATH" ]; then
+            echo "Selecting $XCODE_PATH"
+            sudo xcode-select -s "$XCODE_PATH"
+          fi
           xcodebuild -version
           swift --version
 
