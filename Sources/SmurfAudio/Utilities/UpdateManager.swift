@@ -215,11 +215,11 @@ public final class UpdateManager: ObservableObject {
     public let session: URLSession
 
     public var currentVersionString: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.3.0"
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.4.0"
     }
 
     public var currentSemanticVersion: SemanticVersion {
-        SemanticVersion(currentVersionString) ?? SemanticVersion("1.3.0")!
+        SemanticVersion(currentVersionString) ?? SemanticVersion("1.4.0")!
     }
 
     public var isUpdateAvailable: Bool {

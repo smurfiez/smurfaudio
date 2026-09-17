@@ -4,8 +4,10 @@ set -e
 PACKAGE_NAME="SmurfAudioInstaller.pkg"
 BUILD_ROOT="pkg_build_root"
 
-echo "🔨 Ensuring SmurfAudio.app is compiled..."
-./build_app.sh
+CONFIG="${1:-${CONFIGURATION:-release}}"
+
+echo "🔨 Ensuring SmurfAudio.app is compiled ($CONFIG)..."
+./build_app.sh "$CONFIG"
 
 echo "🔍 Verifying BlackHole prerequisite driver..."
 if [ ! -d "Prerequisites/BlackHole2ch.driver" ]; then
@@ -29,12 +31,13 @@ cp -R "Prerequisites/BlackHole2ch.driver" "$BUILD_ROOT/Library/Audio/Plug-Ins/HA
 # Clean macOS extended metadata files
 find "$BUILD_ROOT" -name "._*" -delete
 
-echo "📦 Building macOS installer package with pkgbuild..."
+VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Info.plist 2>/dev/null || echo "1.4.0")
+echo "📦 Building macOS installer package with pkgbuild (v$VERSION)..."
 pkgbuild \
     --root "$BUILD_ROOT" \
     --scripts "installer_scripts" \
     --identifier "com.smurfaudio.installer" \
-    --version "1.3.0" \
+    --version "$VERSION" \
     --install-location "/" \
     "$PACKAGE_NAME"
 

@@ -5,8 +5,10 @@ APP_NAME="SmurfAudio"
 DMG_NAME="${APP_NAME}.dmg"
 STAGING_DIR="dmg_staging"
 
-echo "📦 Ensuring installer package is built..."
-./create_installer.sh
+CONFIG="${1:-${CONFIGURATION:-release}}"
+
+echo "📦 Ensuring installer package is built ($CONFIG)..."
+./create_installer.sh "$CONFIG"
 
 echo "🧹 Preparing DMG staging directory..."
 rm -rf "$STAGING_DIR" "$DMG_NAME"

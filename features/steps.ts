@@ -261,7 +261,7 @@ Given("SmurfAudio is running version {string}", function (currentVer: string) {
   updateState.currentVersion = currentVer;
   updateState.downloadProgress = 0;
   updateState.isReadyToInstall = false;
-  assert.strictEqual(updateState.currentVersion, "1.3.0");
+  assert.strictEqual(updateState.currentVersion, currentVer);
 });
 
 When("the auto-updater queries GitHub for latest releases", function () {

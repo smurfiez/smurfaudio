@@ -6,5 +6,7 @@
 /*.app
 /*.dmg
 /*.pkg
+/*.zip
+/SHA256SUMS.txt
 *.swp
 *~
