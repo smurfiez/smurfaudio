@@ -32,7 +32,7 @@ jobs:
           sleep 2
 
       - name: Run Swift Unit Tests
-        run: swift test -v
+        run: ./run_tests.sh
 
       - name: Build SmurfAudio App Bundle (Release)
         run: ./build_app.sh release

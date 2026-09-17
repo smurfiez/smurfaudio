@@ -63,7 +63,7 @@ jobs:
           sleep 2
 
       - name: Run Swift Unit Tests
-        run: swift test -v
+        run: ./run_tests.sh
 
       - name: Compile & Assemble App Bundle (Release)
         run: ./build_app.sh release
