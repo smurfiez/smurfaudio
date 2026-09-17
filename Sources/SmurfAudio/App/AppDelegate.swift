@@ -8,7 +8,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var controlWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        setupAppIcon()
         setupNotifications()
+    }
+
+    private func setupAppIcon() {
+        if let icon = NSImage(named: "AppIcon") {
+            NSApp.applicationIconImage = icon
+        } else if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+                  let icon = NSImage(contentsOf: iconURL) {
+            NSApp.applicationIconImage = icon
+        }
     }
 
     private func setupNotifications() {

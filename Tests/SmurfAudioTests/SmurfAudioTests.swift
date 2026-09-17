@@ -740,6 +740,67 @@ struct AppAudioProfileStoreTests {
     }
 }
 
+// MARK: - AppBundle & Settings Icon Tests
+
+@Suite("AppBundle & Settings Icon Tests")
+struct AppBundleIconTests {
+
+    @Test("Info.plist contains CFBundleIconFile and CFBundleIconName for System Settings")
+    func infoPlistIconConfiguration() throws {
+        let fm = FileManager.default
+        let currentDir = fm.currentDirectoryPath
+        let plistURL = URL(fileURLWithPath: currentDir).appendingPathComponent("Info.plist")
+        #expect(fm.fileExists(atPath: plistURL.path) == true)
+
+        let data = try Data(contentsOf: plistURL)
+        guard let plist = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else {
+            Issue.record("Failed to parse Info.plist")
+            return
+        }
+
+        #expect(plist["CFBundleIconFile"] as? String == "AppIcon")
+        #expect(plist["CFBundleIconName"] as? String == "AppIcon")
+    }
+
+    @Test("Resources/AppIcon.icns exists and has valid Apple icns header")
+    func appIconIcnsIntegrity() throws {
+        let fm = FileManager.default
+        let currentDir = fm.currentDirectoryPath
+        let icnsURL = URL(fileURLWithPath: currentDir)
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("AppIcon.icns")
+
+        #expect(fm.fileExists(atPath: icnsURL.path) == true)
+
+        let data = try Data(contentsOf: icnsURL)
+        #expect(data.count > 50_000) // Multi-resolution .icns is at least 50KB
+
+        // "icns" magic header in ASCII is [0x69, 0x63, 0x6e, 0x73]
+        let magic = data.prefix(4)
+        let magicString = String(bytes: magic, encoding: .ascii)
+        #expect(magicString == "icns")
+    }
+
+    @Test("Resources/AppIcon.png high-resolution master exists")
+    func appIconPNGIntegrity() throws {
+        let fm = FileManager.default
+        let currentDir = fm.currentDirectoryPath
+        let pngURL = URL(fileURLWithPath: currentDir)
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("AppIcon.png")
+
+        #expect(fm.fileExists(atPath: pngURL.path) == true)
+
+        let data = try Data(contentsOf: pngURL)
+        #expect(data.count > 10_000)
+
+        // PNG magic header [0x89, 0x50, 0x4E, 0x47]
+        let magic = Array(data.prefix(4))
+        #expect(magic == [0x89, 0x50, 0x4E, 0x47])
+    }
+}
+
+
 
 
 

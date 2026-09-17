@@ -69,6 +69,44 @@ struct PermissionRequestView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     instructionStep(number: "1", text: "Click the **Open System Settings** button below.")
                     instructionStep(number: "2", text: "Locate **SmurfAudio** under Screen & System Audio Recording and turn the switch **ON**.")
+
+                    // Visual preview of how SmurfAudio appears in macOS System Settings
+                    HStack(spacing: 10) {
+                        if let icon = appIconImage {
+                            Image(nsImage: icon)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 22, height: 22)
+                                .cornerRadius(5)
+                        } else {
+                            Image(systemName: "waveform.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(greenColor)
+                        }
+
+                        Text("SmurfAudio")
+                            .font(.system(size: 11, weight: .medium))
+
+                        Spacer()
+
+                        // Mock switch toggle showing the target ON state
+                        Capsule()
+                            .fill(greenColor)
+                            .frame(width: 28, height: 16)
+                            .overlay(
+                                Circle()
+                                    .fill(.white)
+                                    .frame(width: 12, height: 12)
+                                    .padding(.trailing, 2),
+                                alignment: .trailing
+                            )
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color(nsColor: .textBackgroundColor).opacity(0.6))
+                    .cornerRadius(6)
+                    .padding(.leading, 24)
+
                     instructionStep(number: "3", text: "If macOS prompts you to Quit & Reopen, do so to apply changes.")
                 }
             }
@@ -119,7 +157,7 @@ struct PermissionRequestView: View {
             .padding(.bottom, 8)
         }
         .padding(20)
-        .frame(width: 480, height: 460)
+        .frame(width: 480, height: 490)
         .onAppear {
             permissionManager.checkScreenCapturePermission()
             permissionManager.startPolling()
@@ -127,6 +165,16 @@ struct PermissionRequestView: View {
         .onDisappear {
             permissionManager.stopPolling()
         }
+    }
+
+    private var appIconImage: NSImage? {
+        if let icon = NSImage(named: "AppIcon") {
+            return icon
+        }
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") {
+            return NSImage(contentsOf: iconURL)
+        }
+        return NSApp?.applicationIconImage
     }
 
     private func instructionStep(number: String, text: LocalizedStringKey) -> some View {

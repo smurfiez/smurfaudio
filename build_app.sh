@@ -16,6 +16,10 @@ mkdir -p "$RES_DIR"
 cp ".build/$CONFIG/SmurfAudio" "$APP_DIR/SmurfAudio"
 cp Info.plist SmurfAudio.app/Contents/Info.plist
 
+if [ -d "Resources" ]; then
+    cp -R Resources/* "$RES_DIR/"
+fi
+
 echo "✍️ Signing with entitlements (ScreenCaptureKit & Audio permissions)..."
 codesign --force --deep --sign - -r="designated => identifier \"com.smurfaudio.app\"" --entitlements SmurfAudio.entitlements SmurfAudio.app
 
