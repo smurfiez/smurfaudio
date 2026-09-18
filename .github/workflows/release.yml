@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -56,11 +56,15 @@ jobs:
           xcodebuild -version
           swift --version
 
-      - name: Install BlackHole Driver
+      - name: Install BlackHole Audio Driver
         run: |
-          sudo cp -R Prerequisites/BlackHole2ch.driver /Library/Audio/Plug-Ins/HAL/
+          echo "Installing BlackHole 2ch virtual audio driver..."
+          if ! brew list --cask blackhole-2ch &>/dev/null; then
+            brew install --cask blackhole-2ch || sudo installer -pkg Prerequisites/BlackHole2ch-0.7.1.pkg -target /
+          fi
           sudo launchctl kickstart -kp system/com.apple.audio.coreaudiod 2>/dev/null || sudo killall -9 coreaudiod 2>/dev/null || true
-          sleep 2
+          sleep 3
+          system_profiler SPAudioDataType | grep -A 5 -i "BlackHole" || true
 
       - name: Run Swift Unit Tests
         run: ./run_tests.sh
@@ -86,7 +90,7 @@ jobs:
           cat SHA256SUMS.txt
 
       - name: Publish GitHub Release & Upload Assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.get_version.outputs.version_tag }}
           name: SmurfAudio ${{ steps.get_version.outputs.version_tag }}
